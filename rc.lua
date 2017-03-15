@@ -79,11 +79,13 @@ customization.default.property = {
     minimal_client_height = 50,
 }
 
+customization.background = "arch.png"
+
 customization.default.compmgr = 'xcompmgr'
 customization.default.compmgr_args = '-f -c -s'
 customization.default.wallpaper_change_interval = 15
 
-customization.option.wallpaper_change_p = true
+customization.option.wallpaper_change_p = false
 customization.option.tag_persistent_p = true
 customization.option.low_battery_notification_p = true
 
@@ -239,29 +241,8 @@ do
 
     awful.util.spawn_with_shell("hsetroot -solid '#000000'")
 
-    -- randomly select a background picture
-    --{{
-    function customization.func.change_wallpaper()
-        if customization.option.wallpaper_change_p then
-            awful.util.spawn_with_shell("cd " .. config_path .. "/wallpaper/; ./my-wallpaper-pick.sh")
-        end
-    end
-
-    customization.timer.change_wallpaper= timer({timeout = customization.default.wallpaper_change_interval})
-
-    customization.timer.change_wallpaper:connect_signal("timeout", customization.func.change_wallpaper)
-
-    customization.timer.change_wallpaper:connect_signal("property::timeout", 
-    function ()
-        customization.timer.change_wallpaper:stop()
-        customization.timer.change_wallpaper:start()
-    end
-    )
-
-    customization.timer.change_wallpaper:start()
-    -- first trigger
-    customization.func.change_wallpaper()
-    --}}
+    -- set wallpaper
+    awful.util.spawn_with_shell("feh --bg-scale " .. config_path .. "/wallpaper/" .. customization.background)
 end
 --]]
 
@@ -280,7 +261,7 @@ local tools = {
     },
 }
 
-tools.browser.primary = os.getenv("BROWSER") or "firefox"
+tools.browser.primary = os.getenv("BROWSER") or "chromium"
 tools.browser.secondary = ({chromium="firefox", firefox="chromium"})[tools.browser.primary]
 
 -- alternative: override
@@ -368,6 +349,7 @@ customization.func.system_lock = function ()
 end
 
 customization.func.system_suspend = function ()
+    awful.util.spawn("xscreensaver-command -l")
     awful.util.spawn("systemctl suspend")
 end
 
@@ -431,6 +413,10 @@ end
 
 customization.func.app_finder = function ()
     awful.util.spawn("xfce4-appfinder")
+end
+
+customization.func.blank = function ()
+    awful.util.spawn("xset dpms force off")
 end
 
 -- {{ client actions
@@ -1586,7 +1572,7 @@ end
 
 customization.widgets.memusage = wibox.widget.textbox()
 vicious.register(customization.widgets.memusage, vicious.widgets.mem,
-  "<span fgcolor='yellow'>$1% ($2MB/$3MB)</span>", 3)
+  "<span fgcolor='yellow'>$1% $2</span><span fgcolor='white'>MB</span>", 3)
 do
     local prog=tools.system.taskmanager
     local started=false
@@ -1658,6 +1644,25 @@ do
     ))
 end
 
+-- Battery info
+customization.widgets.bat_info = wibox.widget.textbox()
+vicious.register(customization.widgets.bat_info, vicious.widgets.bat, "<span fgcolor='lightgreen'> $1$2 $3 </span>", 61, "BAT0")
+do
+    local prog="gnome-control-center power"
+    local started=false
+    customization.widgets.bat_info:buttons(awful.util.table.join(
+    awful.button({ }, 1, function ()
+        if started then
+            awful.util.spawn("pkill -f '" .. prog .. "'")
+        else
+            awful.util.spawn(prog)
+        end
+        started=not started
+    end)
+    ))
+end
+
+
 customization.widgets.mpdstatus = wibox.widget.textbox()
 customization.widgets.mpdstatus:set_ellipsize("end")
 vicious.register(customization.widgets.mpdstatus, vicious.widgets.mpd,
@@ -1679,19 +1684,13 @@ customization.widgets.mpdstatus = wibox.layout.constraint(customization.widgets.
 do
     customization.widgets.mpdstatus:buttons(awful.util.table.join(
     awful.button({ }, 1, function ()
-        awful.util.spawn("mpc toggle")
+        awful.util.spawn("playerctl play-pause")
     end),
     awful.button({ }, 2, function ()
-        awful.util.spawn("mpc prev")
+        awful.util.spawn("playerctl prev")
     end),
     awful.button({ }, 3, function ()
-        awful.util.spawn("mpc next")
-    end),
-    awful.button({ }, 4, function ()
-        awful.util.spawn("mpc seek -1%")
-    end),
-    awful.button({ }, 5, function ()
-        awful.util.spawn("mpc seek +1%")
+        awful.util.spawn("playerctl next")
     end)
     ))
 end
@@ -1895,8 +1894,9 @@ function(s)
             wibox.widget.systray(),
             customization.widgets.cpuusage,
             customization.widgets.memusage,
-            customization.widgets.bat,
-            customization.widgets.mpdstatus,
+            --customization.widgets.bat,
+            customization.widgets.bat_info,
+            --customization.widgets.mpdstatus,
             customization.widgets.volume,
             customization.widgets.date,
             customization.widgets.layoutbox[s],
@@ -2273,6 +2273,8 @@ awful.key({ modkey, }, "Delete", customization.func.system_power_off),
 
 awful.key({ modkey, }, "/", customization.func.app_finder),
 
+awful.key({ }, "Menu", customization.func.blank),
+
 --- everyday
 
 uniarg:key_repeat({ modkey, "Mod1", }, "l", function ()
@@ -2371,18 +2373,18 @@ end),
 
 uniarg:key_numarg({}, "XF86MonBrightnessUp",
 function ()
-  awful.util.spawn("xbacklight -inc 10")
+  awful.util.spawn("/etc/scripts/brightness.sh +10")
 end,
 function (n)
-  awful.util.spawn("xbacklight -inc " .. n)
+  awful.util.spawn("/etc/scripts/brightness.sh +" .. n)
 end),
 
 uniarg:key_numarg({}, "XF86MonBrightnessDown",
 function ()
-  awful.util.spawn("xbacklight -dec 10")
+  awful.util.spawn("/etc/scripts/brightness.sh -10")
 end,
 function (n)
-  awful.util.spawn("xbacklight -dec " .. n)
+  awful.util.spawn("/etc/scripts/brightness.sh +" .. n)
 end),
 
 awful.key({}, "XF86WLAN", function ()
